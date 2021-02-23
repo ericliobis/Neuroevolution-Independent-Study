@@ -1,0 +1,114 @@
+import numpy as np
+import pandas as pd
+import torch
+from torch.utils.data import Dataset, TensorDataset
+from torch.utils.data.sampler import SubsetRandomSampler
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import itertools
+import time
+
+update = 5
+seed = 128
+rng = np.random.RandomState(seed)
+input = 20
+hidden = 100
+output = 1
+class CustomDatasetFromCSV(Dataset):
+    def __init__(self, csv_path):
+        self.data = pd.read_csv(csv_path)
+        self.labels = self.data.iloc[:,3].values;
+        self.X_data = self.data.iloc[:,4:24].values
+    def __getitem__(self, index):
+        # This method should return only 1 sample and label
+        # (according to "index"), not the whole dataset
+        # So probably something like this for you:
+        X = self.X_data[index, :]
+        Y = self.labels[index]
+        return X, Y;
+
+
+    def __len__(self):
+        return len(self.labels)
+
+
+class Net(nn.Module):
+
+    def __init__(self):
+        super(Net, self).__init__()
+        #20 to 100 to 1 output
+        self.fc1 = nn.Linear(input, hidden)
+        self.fc2 = nn.Linear(hidden, output)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x.float()))
+        x = self.fc2(x.float())
+        return x
+
+
+net = Net()
+net.zero_grad()
+print(net)
+net.load_state_dict(torch.load('Hebbian_analysis_search.dat'))
+
+dataset = CustomDatasetFromCSV("move_all_hebb_with_search.csv");
+dtype = torch.float
+device = torch.device("cuda")
+batch_size = 100
+val_split = 0.2
+shuffle_dataset = True
+random_seed= 42
+dataset_size = len(dataset)
+indices = list(range(dataset_size))
+split = int(np.floor(val_split * dataset_size))
+train = False
+test = True
+if shuffle_dataset :
+    np.random.seed(random_seed)
+    np.random.shuffle(indices)
+train_indices, val_indices = indices[split:], indices[:split]
+
+train_sampler = SubsetRandomSampler(train_indices)
+valid_sampler = SubsetRandomSampler(val_indices)
+
+train_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, sampler=train_sampler)
+validation_loader = torch.utils.data.DataLoader(dataset, batch_size=1, sampler=valid_sampler)
+lr = 1e-5
+opt = optim.Adam(net.parameters(), lr=lr)
+num_epochs = 10000
+if train:
+    for epoch in range(num_epochs):
+        previoustime = time.time()
+        tloss = 0
+        for i,(X,Y) in enumerate(train_loader):
+            opt.zero_grad()
+            prediction = net(X)
+            pred = prediction[:,0]
+            loss = (pred - Y).pow(2).sum()
+            tloss = tloss+ loss
+            loss.backward()
+            opt.step()
+        print("Loss:",tloss)
+        nowtime = time.time()
+        etime = nowtime-previoustime
+        print("Time for epoch: ", etime )
+        print("EST Time remaining", (etime*(num_epochs-epoch))/60, " mins")
+    torch.save(net.state_dict(), 'Hebbian_analysis_search.dat')
+
+if test:
+    ltot = 0;
+    num_1s_wrong = 0
+    for i, (X, Y) in enumerate(validation_loader):
+
+        prediction = net(X)
+
+        loss = (prediction.round() - Y).pow(2).sum()
+        ltot = ltot + loss
+        print(i, ": Loss: ", loss)
+        if Y == 1 and loss > 0:
+            num_1s_wrong = num_1s_wrong + 1
+    print(ltot)
+    print(num_1s_wrong)
+
+

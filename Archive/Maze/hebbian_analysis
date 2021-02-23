@@ -1,0 +1,97 @@
+import numpy as np
+import pandas as pd
+import torch
+from torch.utils.data import Dataset, TensorDataset
+from torch.utils.data.sampler import SubsetRandomSampler
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import itertools
+
+seed = 128
+rng = np.random.RandomState(seed)
+input = 3
+hidden = 100
+output = 20
+class CustomDatasetFromCSV(Dataset):
+    def __init__(self, csv_path):
+        self.data = pd.read_csv(csv_path)
+        self.labels = self.data.iloc[:,3:23].values;
+        self.X_data = self.data.iloc[:,0:3].values
+    def __getitem__(self, index):
+        # This method should return only 1 sample and label
+        # (according to "index"), not the whole dataset
+        # So probably something like this for you:
+        X = self.X_data[index, :]
+        Y = self.labels[index, :]
+        return X, Y;
+
+
+    def __len__(self):
+        return len(self.labels)
+
+
+class Net(nn.Module):
+
+    def __init__(self):
+        super(Net, self).__init__()
+        #3 to 100 to 20 output
+        self.fc1 = nn.Linear(input, hidden)
+        self.fc2 = nn.Linear(hidden, output)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x.float()))
+        x = self.fc2(x.float())
+        return x
+
+
+net = Net()
+net.zero_grad()
+print(net)
+net.load_state_dict(torch.load('Hebbian_analysis.dat'))
+
+dataset = CustomDatasetFromCSV("move_all_hebb.csv");
+dtype = torch.float
+device = torch.device("cpu")
+batch_size = 100
+val_split = 0.2
+shuffle_dataset = True
+random_seed= 42
+dataset_size = len(dataset)
+indices = list(range(dataset_size))
+split = int(np.floor(val_split * dataset_size))
+train = False
+test = True
+if shuffle_dataset :
+    np.random.seed(random_seed)
+    np.random.shuffle(indices)
+train_indices, val_indices = indices[split:], indices[:split]
+
+train_sampler = SubsetRandomSampler(train_indices)
+valid_sampler = SubsetRandomSampler(val_indices)
+
+train_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, sampler=train_sampler)
+validation_loader = torch.utils.data.DataLoader(dataset, batch_size=1, sampler=valid_sampler)
+lr = 1e-3
+opt = optim.Adam(net.parameters(), lr=lr)
+num_epochs = 10000
+if train:
+    for epoch in range(num_epochs):
+        for i,(X,Y) in enumerate(train_loader):
+            opt.zero_grad()
+            prediction = net(X)
+            loss = (prediction - Y).pow(2).sum()
+            loss.backward()
+            print(loss)
+            opt.step()
+
+    torch.save(net.state_dict(), 'Hebbian_analysis.dat')
+
+if test:
+    for i, (X, Y) in enumerate(validation_loader):
+        print(X.shape)
+        prediction = net(X)
+        loss = (prediction - Y).pow(2).sum()
+        print(loss)
+
+
