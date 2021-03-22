@@ -256,7 +256,7 @@ class CartPoleEnv_Rand_Length(gym.Env):
         'video.frames_per_second': 10000
     }
 
-    def __init__(self, seed):
+    def __init__(self, seed,multF):
         self.gravity = 9.8
         self.masscart = 1.0
         self.masspole = 0.1
@@ -266,6 +266,7 @@ class CartPoleEnv_Rand_Length(gym.Env):
         self.force_mag = 10.0
         self.tau = 0.02  # seconds between state updates
         self.kinematics_integrator = 'euler'
+        self.multF = multF
 
         self.target = 0
         self.sigma = 1
@@ -303,7 +304,9 @@ class CartPoleEnv_Rand_Length(gym.Env):
 
     def multFactor(self):
         dist = self.state[0]-self.target/2
-        return math.exp((-(dist)**2)/(2*self.sigma**2))
+        if(self.multF):
+            return math.exp((-(dist)**2)/(2*self.sigma**2))
+        return 1
 
     def getDist(self):
         return (self.state[0]-self.target/2)
