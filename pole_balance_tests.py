@@ -7,6 +7,7 @@ from Agents import PolicyAgent
 from Agents import ACAgent
 from Agents import ACRecurrentAgent
 from Agents import ACHebbRecurrentAgent
+from Agents import ACHebbRecurrentAgent_
 #from pole_environment import CartPoleEnv
 from pole_environment import CartPoleEnv_Rand_Length
 from utils import plotLearning
@@ -136,6 +137,8 @@ def runNetworks(learn, network_type, network_save_name, save_eps,  max_ep, episo
             agent = ACRecurrentAgent([learning_rate_policy, learning_rate_critic], isize, hsize, num_actions,  act_fun, rec_layer_out, rec_layer_in,device, gamma, eps, weight_decay, blossv, batch_size, save_path,network_save_name)
         elif network_type == 3:
             agent = ACHebbRecurrentAgent([learning_rate_policy, learning_rate_critic], isize, hsize, num_actions,  act_fun, rec_layer_out, rec_layer_in,device, gamma, eps, weight_decay, blossv, batch_size, save_path,network_save_name)
+        elif network_type == 4:
+            agent = ACHebbRecurrentAgent_([learning_rate_policy, learning_rate_critic], isize, hsize, num_actions,  act_fun, rec_layer_out, rec_layer_in,device, gamma, eps, weight_decay, blossv, batch_size, save_path,network_save_name)
 
 
     #Check to see if the network already exists and load it if it does

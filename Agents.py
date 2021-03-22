@@ -321,7 +321,7 @@ class ACHebbRecurrentAgent(object):
         self.blossv = blossv
         self.model_save_name = model_save_name
         self.save_path = save_path
-        self.writeWeights = True;
+        self.writeWeights = False;
 
         self.policy = HebbianNetwork(lr[0], isize, hsizes, num_actions,act_functions,rec_layer_out, rec_layer_in, cuda,eps , weight_decay , batch_size)
         self.critic = HebbianNetwork(lr[1], isize, hsizes, 1,act_functions,rec_layer_out, rec_layer_in, cuda,eps, weight_decay, batch_size)
@@ -427,6 +427,133 @@ class ACHebbRecurrentAgent(object):
     def load_model(self, model_path_policy, model_path_critic):
         self.policy.load_state_dict(torch.load(model_path_policy))
         self.critic.load_state_dict(torch.load(model_path_critic))
+    def save_params(self):
+        if(self.writeWeights):
+            with open("policy_params.csv", "a", newline = '') as my_csv:
+                csvWriter = csv.writer(my_csv, delimiter=',')
+                dummy = []
+                for param in self.policy.parameters():
+                    dummy1 = param.data.cpu().detach().numpy()
+                    for p1 in dummy1:
+                        if(np.isscalar(p1)):
+                        
+                            dummy.append(p1)
+                        else:
+                            for p2 in p1:
+                            
+                                dummy.append(p2)
+                csvWriter.writerow(dummy)
+            with open("critic_params.csv", "a", newline = '') as my_csv:
+                csvWriter = csv.writer(my_csv, delimiter=',')
+                dummy = []
+                for param in self.critic.parameters():
+                    dummy1 = param.data.cpu().detach().numpy()
+                    for p1 in dummy1:
+                        if(np.isscalar(p1)):
+                        
+                            dummy.append(p1)
+                        else:
+                            for p2 in p1:
+                            
+                                dummy.append(p2)
+                csvWriter.writerow(dummy)
+
+
+
+class ACHebbRecurrentAgent_(object):
+    def __init__(self, lr, isize, hsizes, num_actions,act_functions, rec_layer_out, rec_layer_in, cuda, gamma = 0.99,  eps = 1e-4, weight_decay = 0, blossv = 0.1, batch_size = 1, save_path = "",model_save_name = "ACmodel_hebb_"  ):
+        # lr (float []) = learning rate [0]- policy, [1] - critic
+        # isize (int) = input size
+        # hsizes (int []) = sizes of the hidden layers
+        # num_actions (int) = output size (number of actions)
+        # act_functions (int []) - activation function for each layer. 0 in None (generally used for last layer), 1 is TANH, 2 is SIGMOID, 3 is RELU
+        # rec_layer_out (int) - The layer where the recurrent values go out (I.E. 0 is after the first layer activation function)
+        # rec_layer_in (int) - The layer where the recurrent values come in (I.E. 0 is before the first layer activation function)
+        # cuda {"cuda" or "cpu")
+        # gamma (float) - discounting factor for rewards
+        # eps (float) - epsilon value for Adam optimizer - DEFAULT: 1e-4
+        # weight decay (float) - weight decay for Adam optimizer - DEFAULT: 0
+        # blossv (float) - coefficient for value prediction loss - DEFAULT: 0.1
+        # batch_size (int) - the batch size the network - DEFAULT: 1
+        # save_path (string) - the path to save to  - DEFAULT: ""
+        # model_save_name (string) - the name of the model - DEFAULT: ACmodel_hebb
+        self.gamma = gamma
+        self.cuda = cuda
+        self.bs = batch_size
+        self.blossv = blossv
+        self.model_save_name = model_save_name
+        self.save_path = save_path
+        self.writeWeights = False;
+
+        self.PC = ACHebbianNetwork(lr[0], isize, hsizes, num_actions,act_functions,rec_layer_out, rec_layer_in, cuda,eps , weight_decay , batch_size)
+        self.zero_loss()
+
+    def zero_loss(self):
+        self.pc_loss = torch.tensor([0.]).to(self.cuda);
+        #self.critic_loss =  torch.tensor([0.]).to(self.cuda);
+        self.R = torch.zeros(self.bs).to(self.cuda)
+        self.rewards = []
+        self.vs = []
+        self.loss = 0
+        self.lossv = 0
+        self.log_probs = []
+        self.PC.optimizer.zero_grad()
+
+
+        self.pc_rec =  self.PC.initialZeroState().to(self.cuda)
+        self.pc_rec_hebb = self.PC.initialZeroHebb().to(self.cuda)
+
+
+    def store_rewards(self, reward):
+
+        #Get the critics thought at the last state
+        #[critic_value, self.critic_rec, self.critic_rec_hebb] = self.critic.forward(state, self.critic_rec, self.critic_rec_hebb)
+        #self.vs.append(critic_value)
+        self.rewards.append(reward.copy())
+
+    def choose_action(self, observation):
+        #[probabilties,self.policy_rec, self.policy_rec_hebb, v] = self.policy(observation, self.policy_rec,self.policy_rec_hebb)
+        #print("policy rec:", self.policy_rec)
+        #print("policy rec hebb:", self.policy_rec_hebb)
+
+        probabilties, self.policy_rec, self.policy_rec_hebb, v = self.PC(torch.from_numpy(observation).to(self.cuda), self.pc_rec, self.pc_rec_hebb)
+
+        #v, self.critic_rec, self.critic_rec_hebb = self.critic(torch.from_numpy(observation).to(self.cuda), self.critic_rec, self.critic_rec_hebb)
+
+        #print("before",probabilties)
+        probabilties = torch.softmax(probabilties, dim=1)
+        #print("after", probabilties)
+        self.loss += (0.03 * probabilties.pow(2).sum() / self.bs)
+        self.vs.append(v)
+        action_probs = torch.distributions.Categorical(probabilties)
+
+        action = action_probs.sample();
+        self.log_probs.append(action_probs.log_prob(action))
+        return action.cpu().numpy()
+
+    def learn(self):
+        eplen = len(self.rewards)
+        self.R = torch.zeros(self.bs).to(self.cuda)
+
+        for numstepb in reversed(range(eplen)):
+            self.R = self.gamma * self.R + torch.from_numpy(self.rewards[numstepb]).to(self.cuda)
+
+            ctrR = self.R - self.vs[numstepb][0]
+            self.lossv += ctrR.pow(2).sum() / self.bs
+            self.loss -= (self.log_probs[numstepb] * ctrR.detach()).sum() / self.bs
+
+        self.loss += self.blossv * self.lossv
+        self.loss /= eplen
+        self.loss.backward()
+        self.PC.optimizer.step()
+        self.save_params()
+        return self.loss
+    def save_model(self):
+        torch.save(self.PC.state_dict(), self.save_path+"policy_"+self.model_save_name)
+        #torch.save(self.critic.state_dict(), self.save_path+"critic_"+self.model_save_name)
+    def load_model(self, model_path_policy, model_path_critic):
+        self.policy.load_state_dict(torch.load(model_path_policy))
+        #self.critic.load_state_dict(torch.load(model_path_critic))
     def save_params(self):
         if(self.writeWeights):
             with open("policy_params.csv", "a", newline = '') as my_csv:
