@@ -88,6 +88,15 @@ render_eps = int(config['EPISODE']['render_eps'])
 target_range_lower = float(config['EPISODE']['target_range_lower'])
 target_range_upper = float(config['EPISODE']['target_range_upper'])
 
+end_num_runs = int(config['END_CONDITIONS']['end_num_runs'])
+#percent of max score to call it a solved run
+end_threshold = float(config['END_CONDITIONS']['end_threshold'])*length_of_episodes
+#percent of runs that must be solved within the end_num_runs to quit
+end_percent = float(config['END_CONDITIONS']['end_percent'])
+end_number = int(end_percent*end_num_runs)
+
+
+
 #sets the seed
 np.random.seed(seed);
 random.seed(seed);
@@ -120,6 +129,8 @@ def runNetworks(learn, network_type, network_save_name, save_eps,  max_ep, episo
         dist_history_all = []
         balance_history_all = []
         score_history_round = []
+        end_condition = []
+        end_cond = 0
 
         score_history = []
         max_episodes = max_ep
@@ -225,6 +236,17 @@ def runNetworks(learn, network_type, network_save_name, save_eps,  max_ep, episo
             #dist_history_all.append(dist_hist);
             #balance_history_all.append(balance_hist);
             score_history_round.append(sum(score_hist))
+            end_condition.append(sum(score_hist))
+            if(sum(score_hist)>=end_threshold):
+                end_cond += 1
+            if(len(end_condition)>end_num_runs and end_condition.pop(0) >= end_threshold):
+                end_cond -= 1
+            print("End Condition: "+ str(end_cond) + "/" + str(end_number) )
+            if(end_cond >= end_number):
+                agent.save_model()
+                print("Model Saved")
+                break
+
             if i_episode%save_eps == 0:
                 agent.save_model()
                 print("Model Saved")
@@ -232,12 +254,15 @@ def runNetworks(learn, network_type, network_save_name, save_eps,  max_ep, episo
         #plotLearning(score_history, filename = "cartpole.png", window = 10)
         env.close()
         score_history_all.append(score_history_round)
+        with open(save_path_temp+"SCORE_HIST_ALL.csv", "a", newline = '') as my_csv:
+            csvWriter = csv.writer(my_csv, delimiter=',')
+            csvWriter.writerow(score_history_round)
         #with open(save_path_temp+"DIST_HIST_"+save_name+ ".csv", "w+", newline = '') as my_csv:
         #    csvWriter = csv.writer(my_csv, delimiter=',')
         #    csvWriter.writerows(dist_history_all)
-    with open(save_path_temp+"SCORE_HIST_ALL.csv", "w+", newline = '') as my_csv:
-        csvWriter = csv.writer(my_csv, delimiter=',')
-        csvWriter.writerows(score_history_all)
+    #with open(save_path_temp+"SCORE_HIST_ALL.csv", "w+", newline = '') as my_csv:
+    #    csvWriter = csv.writer(my_csv, delimiter=',')
+    #    csvWriter.writerows(score_history_all)
         #with open(save_path_temp+"BALANCE_HIST_"+save_name+ ".csv", "w+", newline = '') as my_csv:
         #    csvWriter = csv.writer(my_csv, delimiter=',')
         #    csvWriter.writerows(balance_history_all)
