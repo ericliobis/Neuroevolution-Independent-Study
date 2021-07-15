@@ -7,7 +7,7 @@ from Agents import PolicyAgent
 from Agents import ACAgent
 from Agents import ACRecurrentAgent
 from Agents import ACHebbRecurrentAgent
-from Agents import ACHebbRecurrentAgent_
+from Agents import FixedHebbRecurrentAgent
 #from pole_environment import CartPoleEnv
 from pole_environment import CartPoleEnv_Rand_Length
 from utils import plotLearning
@@ -153,7 +153,7 @@ def runNetworks(learn, network_type, network_save_name, save_eps,  max_ep, episo
             elif network_type == 3:
                 agent = ACHebbRecurrentAgent([learning_rate_policy, learning_rate_critic], isize, hsize, num_actions,  act_fun, rec_layer_out, rec_layer_in,device, gamma, eps, weight_decay, blossv, batch_size, save_path_temp,network_save_name_temp)
             elif network_type == 4:
-                agent = ACHebbRecurrentAgent_([learning_rate_policy, learning_rate_critic], isize, hsize, num_actions,  act_fun, rec_layer_out, rec_layer_in,device, gamma, eps, weight_decay, blossv, batch_size, save_path_temp,network_save_name_temp)
+                agent = FixedHebbRecurrentAgent([learning_rate_policy, learning_rate_critic], isize, hsize, num_actions,  act_fun, rec_layer_out, rec_layer_in,device, gamma, eps, weight_decay, blossv, batch_size, save_path_temp,network_save_name_temp)
 
 
         #Check to see if the network already exists and load it if it does
@@ -230,13 +230,13 @@ def runNetworks(learn, network_type, network_save_name, save_eps,  max_ep, episo
                     print("==========================================")
                     print("Episode: ", i_episode)
                     print("Reward: ", score)
-                    print("Length:", env.length)
-
                     break
             #dist_history_all.append(dist_hist);
             #balance_history_all.append(balance_hist);
             score_history_round.append(sum(score_hist))
             end_condition.append(sum(score_hist))
+
+            #work with the end condition"
             if(sum(score_hist)>=end_threshold):
                 end_cond += 1
             if(len(end_condition)>end_num_runs and end_condition.pop(0) >= end_threshold):

@@ -459,9 +459,8 @@ class ACHebbRecurrentAgent(object):
                 csvWriter.writerow(dummy)
 
 
-
-class ACHebbRecurrentAgent_(object):
-    def __init__(self, lr, isize, hsizes, num_actions,act_functions, rec_layer_out, rec_layer_in, cuda, gamma = 0.99,  eps = 1e-4, weight_decay = 0, blossv = 0.1, batch_size = 1, save_path = "",model_save_name = "ACmodel_hebb_"  ):
+class FixedHebbRecurrentAgent(object):
+    def __init__(self, lr, isize, hsizes, num_actions,act_functions, rec_layer_out, rec_layer_in, cuda, gamma = 0.99,  eps = 1e-4, weight_decay = 0, blossv = 0.1, batch_size = 1, save_path = "",model_save_name = "ACmodel_hebb"  ):
         # lr (float []) = learning rate [0]- policy, [1] - critic
         # isize (int) = input size
         # hsizes (int []) = sizes of the hidden layers
@@ -485,23 +484,57 @@ class ACHebbRecurrentAgent_(object):
         self.save_path = save_path
         self.writeWeights = False;
 
-        self.PC = ACHebbianNetwork(lr[0], isize, hsizes, num_actions,act_functions,rec_layer_out, rec_layer_in, cuda,eps , weight_decay , batch_size)
+        self.policy = FixedHebbianNetwork(lr[0], isize, hsizes, num_actions,act_functions,rec_layer_out, rec_layer_in, cuda,eps , weight_decay , batch_size)
+        self.critic = FixedHebbianNetwork(lr[1], isize, hsizes, 1,act_functions,rec_layer_out, rec_layer_in, cuda,eps, weight_decay, batch_size)
+        if(self.writeWeights):
+            with open("policy_params.csv", "w+", newline = '') as my_csv:
+                csvWriter = csv.writer(my_csv, delimiter=',')
+                dummy = []
+                for param in self.policy.parameters():
+                    dummy1 = param.data.cpu().detach().numpy()
+                    for p1 in dummy1:
+                        if(np.isscalar(p1)):
+                    
+                            dummy.append(p1)
+                        else:
+                            for p2 in p1:
+                        
+                                dummy.append(p2)
+                csvWriter.writerow(dummy)
+            with open("critic_params.csv", "w+", newline = '') as my_csv:
+                csvWriter = csv.writer(my_csv, delimiter=',')
+                dummy = []
+                for param in self.critic.parameters():
+                    dummy1 = param.data.cpu().detach().numpy()
+                    for p1 in dummy1:
+                        if(np.isscalar(p1)):
+                        
+                            dummy.append(p1)
+                        else:
+                            for p2 in p1:
+                            
+                                dummy.append(p2)
+                csvWriter.writerow(dummy)
+        print(self.policy)
+        print(self.critic)
         self.zero_loss()
 
     def zero_loss(self):
-        self.pc_loss = torch.tensor([0.]).to(self.cuda);
-        #self.critic_loss =  torch.tensor([0.]).to(self.cuda);
+        self.actor_loss = torch.tensor([0.]).to(self.cuda);
+        self.critic_loss =  torch.tensor([0.]).to(self.cuda);
         self.R = torch.zeros(self.bs).to(self.cuda)
         self.rewards = []
         self.vs = []
         self.loss = 0
         self.lossv = 0
         self.log_probs = []
-        self.PC.optimizer.zero_grad()
+        self.critic.optimizer.zero_grad()
+        self.policy.optimizer.zero_grad()
 
-
-        self.pc_rec =  self.PC.initialZeroState().to(self.cuda)
-        self.pc_rec_hebb = self.PC.initialZeroHebb().to(self.cuda)
+        self.critic_rec =  self.critic.initialZeroState().to(self.cuda)
+        self.critic_rec_hebb = self.critic.initialZeroHebb().to(self.cuda)
+        self.policy_rec = self.policy.initialZeroState().to(self.cuda)
+        self.policy_rec_hebb = self.policy.initialZeroHebb().to(self.cuda)
 
 
     def store_rewards(self, reward):
@@ -515,10 +548,9 @@ class ACHebbRecurrentAgent_(object):
         #[probabilties,self.policy_rec, self.policy_rec_hebb, v] = self.policy(observation, self.policy_rec,self.policy_rec_hebb)
         #print("policy rec:", self.policy_rec)
         #print("policy rec hebb:", self.policy_rec_hebb)
+        probabilties, self.policy_rec, self.policy_rec_hebb = self.policy(torch.from_numpy(observation).to(self.cuda), self.policy_rec, self.policy_rec_hebb)
 
-        probabilties, self.policy_rec, self.policy_rec_hebb, v = self.PC(torch.from_numpy(observation).to(self.cuda), self.pc_rec, self.pc_rec_hebb)
-
-        #v, self.critic_rec, self.critic_rec_hebb = self.critic(torch.from_numpy(observation).to(self.cuda), self.critic_rec, self.critic_rec_hebb)
+        v, self.critic_rec, self.critic_rec_hebb = self.critic(torch.from_numpy(observation).to(self.cuda), self.critic_rec, self.critic_rec_hebb)
 
         #print("before",probabilties)
         probabilties = torch.softmax(probabilties, dim=1)
@@ -545,15 +577,16 @@ class ACHebbRecurrentAgent_(object):
         self.loss += self.blossv * self.lossv
         self.loss /= eplen
         self.loss.backward()
-        self.PC.optimizer.step()
+        self.critic.optimizer.step()
+        self.policy.optimizer.step()
         self.save_params()
         return self.loss
     def save_model(self):
-        torch.save(self.PC.state_dict(), self.save_path+"policy_"+self.model_save_name)
-        #torch.save(self.critic.state_dict(), self.save_path+"critic_"+self.model_save_name)
+        torch.save(self.policy.state_dict(), self.save_path+"policy_"+self.model_save_name)
+        torch.save(self.critic.state_dict(), self.save_path+"critic_"+self.model_save_name)
     def load_model(self, model_path_policy, model_path_critic):
         self.policy.load_state_dict(torch.load(model_path_policy))
-        #self.critic.load_state_dict(torch.load(model_path_critic))
+        self.critic.load_state_dict(torch.load(model_path_critic))
     def save_params(self):
         if(self.writeWeights):
             with open("policy_params.csv", "a", newline = '') as my_csv:
@@ -584,3 +617,4 @@ class ACHebbRecurrentAgent_(object):
                             
                                 dummy.append(p2)
                 csvWriter.writerow(dummy)
+
